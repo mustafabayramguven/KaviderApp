@@ -1,0 +1,12 @@
+[package]
+name = "kavita-api"
+description = "Typed async client for the Kavita HTTP API."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# M1 adds tokio + reqwest (HTTP/2, gzip/brotli), rustls with rustls-platform-verifier,
+# serde with #[serde(default)] DTOs, and a mock-server dev-dependency.
+[dependencies]

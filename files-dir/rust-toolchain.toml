@@ -1,0 +1,10 @@
+# One pinned toolchain for local and CI builds.
+# The Android targets are declared here so `rustup` installs them automatically
+# in CI (rustup honours this file) and local builds need no extra setup step.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = [
+    "aarch64-linux-android",
+    "x86_64-linux-android",
+]

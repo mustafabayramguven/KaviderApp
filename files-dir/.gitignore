@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+
+# Build output and signing material must never be committed.
+*.apk
+*.aab
+*.keystore
+*.jks
+*.dwarf
+keystore.properties

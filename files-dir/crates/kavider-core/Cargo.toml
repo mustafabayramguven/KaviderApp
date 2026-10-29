@@ -1,0 +1,12 @@
+[package]
+name = "kavider-core"
+description = "Domain logic for Kavider: repositories, session, settings, image pipeline, viewport."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# No dependencies yet: M1+ adds rusqlite (metadata cache), thiserror, tracing and the
+# image pipeline. Each addition is justified in docs/DECISIONS.md.
+[dependencies]

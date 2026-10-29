@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/kavita-api",
+    "crates/kavider-core",
+    "crates/kavider-app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# Pinned: the Android backend, the material style and the gesture API are all
+# version-sensitive, so bump deliberately and re-run the M0 spike after a bump.
+slint = "=1.18.1"
+slint-build = "=1.18.1"
+
+# Release profile per the project brief (section 7).
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

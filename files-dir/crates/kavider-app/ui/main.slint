@@ -1,0 +1,463 @@
+// Copyright (c) 2026 Kavider contributors. MIT.
+//
+// M0 feasibility screen. Layout and intents only — every piece of state that survives a
+// frame lives in Rust (crates/kavider-app/src/lib.rs -> kavider-core).
+//
+// What this screen exists to prove:
+//   (b) soft-keyboard text input, a password field, and paste (claims 5 + 6 in docs/SPIKE.md)
+//   (c) bottom navigation on top of the built-in `material` style
+//   (d) a large image with pinch / pan / double-tap zoom
+//
+// The style is forced to `material` at compile time by build.rs, so desktop and Android
+// render identically and light/dark follows the system.
+
+import { Button, LineEdit, ScrollView, Slider, Palette, StyleMetrics } from "std-widgets.slint";
+
+// ---------------------------------------------------------------------------------------
+// Bottom navigation item. The built-in `material` style has no NavigationBar, so this is
+// hand-built from documented primitives (docs/DECISIONS.md D-004).
+// ---------------------------------------------------------------------------------------
+component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback tapped();
+
+    height: 64px;
+    background: transparent;
+
+    area := TouchArea {
+        clicked => {
+            root.tapped();
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+
+        Rectangle {
+            width: 64px;
+            height: 32px;
+            border-radius: 16px;
+            background: root.selected ? Palette.accent-background : transparent;
+
+            Text {
+                text: root.label;
+                color: root.selected ? Palette.accent-foreground : Palette.foreground;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Onboarding step 1 + 2: server address and credentials. Paste is exercised through the
+// LineEdit's own documented functions as well as the platform's long-press affordance.
+// ---------------------------------------------------------------------------------------
+component ConnectPane inherits Rectangle {
+    in-out property <string> server-text;
+    in-out property <string> password-text;
+    callback note(string);
+
+    background: Palette.background;
+
+    VerticalLayout {
+        padding: StyleMetrics.layout-padding;
+        spacing: 12px;
+
+        Text {
+            text: "Connect to Kavita";
+            font-size: 20px;
+            color: Palette.foreground;
+        }
+
+        Text {
+            text: "M0 spike: nothing is sent anywhere. This screen only proves that the soft keyboard, a password field and paste work on the device.";
+            wrap: word-wrap;
+            font-size: 12px;
+            color: Palette.control-foreground;
+        }
+
+        server-field := LineEdit {
+            placeholder-text: "kavita.example.com  or  192.168.1.20:5000";
+            text <=> root.server-text;
+        }
+
+        password-field := LineEdit {
+            input-type: password;
+            placeholder-text: "password";
+            text <=> root.password-text;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            Button {
+                text: "Paste → server";
+                clicked => {
+                    server-field.paste();
+                    root.note("paste → server field");
+                }
+            }
+
+            Button {
+                text: "Paste → password";
+                clicked => {
+                    password-field.paste();
+                    root.note("paste → password field");
+                }
+            }
+        }
+
+        Button {
+            text: "Select all + copy (server field)";
+            clicked => {
+                server-field.select-all();
+                server-field.copy();
+                root.note("select-all + copy on the server field");
+            }
+        }
+
+        Text {
+            text: "The password field hides its text; the eye icon inside the field reveals it. Both come from the material style — no custom widget was written for M0.";
+            wrap: word-wrap;
+            font-size: 12px;
+            color: Palette.control-foreground;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Reader controls (no page content yet — the image pipeline is M4).
+// ---------------------------------------------------------------------------------------
+component ReaderPane inherits Rectangle {
+    in-out property <int> direction: 0;
+    in-out property <float> page: 1.0;
+    in property <int> pages: 12;
+    callback note(string);
+
+    background: Palette.background;
+
+    VerticalLayout {
+        padding: StyleMetrics.layout-padding;
+        spacing: 12px;
+
+        Text {
+            text: "Reader controls";
+            font-size: 20px;
+            color: Palette.foreground;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            Button {
+                text: "LTR";
+                clicked => {
+                    root.direction = 0;
+                    root.note("reading direction: paged LTR");
+                }
+            }
+
+            Button {
+                text: "RTL (manga)";
+                clicked => {
+                    root.direction = 1;
+                    root.note("reading direction: paged RTL");
+                }
+            }
+
+            Button {
+                text: "Webtoon";
+                clicked => {
+                    root.direction = 2;
+                    root.note("reading direction: vertical continuous");
+                }
+            }
+        }
+
+        Text {
+            text: ["Paged, left → right", "Paged, right → left", "Vertical, continuous"][root.direction];
+            font-size: 14px;
+            color: Palette.foreground;
+        }
+
+        Slider {
+            value <=> root.page;
+            minimum: 1.0;
+            maximum: root.pages;
+        }
+
+        Text {
+            text: "Page " + round(root.page) + " / " + root.pages;
+            font-size: 13px;
+            color: Palette.control-foreground;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Zoom spike: one large image, pinch / pan / double-tap.
+// ---------------------------------------------------------------------------------------
+component ZoomPane inherits Rectangle {
+    // Authoritative transform, written by Rust from kavider-core::viewport::Viewport.
+    in-out property <float> zoom-scale: 1.0;
+    in-out property <float> pan-x: 0.0;
+    in-out property <float> pan-y: 0.0;
+
+    // Preview of the gesture in flight; never the committed value.
+    in-out property <float> live-scale: 1.0;
+    in-out property <string> gesture-state: "idle";
+
+    callback zoom-by(float, float, float);
+    callback pan-to(float, float);
+    callback reset-view();
+    callback note(string);
+
+    background: Palette.alternate-background;
+    clip: true;
+
+    // Content first so the input surfaces sit above it.
+    content := Rectangle {
+        x: root.pan-x * 1px;
+        y: root.pan-y * 1px;
+        width: 1600px;
+        height: 2400px;
+        transform-scale: root.zoom-scale * root.live-scale;
+        transform-origin: { x: 0px, y: 0px };
+
+        Image {
+            width: 100%;
+            height: 100%;
+            source: @image-url("assets/zoom-test.png");
+            image-fit: fill;
+        }
+    }
+
+    // Single-finger pan + double-tap, deliberately a *sibling* of the pinch recognizer —
+    // the arrangement Slint's own examples/native-gestures uses.
+    pan := TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up) {
+                root.pan-to((root.pan-x + self.mouse-x - self.pressed-x) / 1px,
+                            (root.pan-y + self.mouse-y - self.pressed-y) / 1px);
+            }
+        }
+
+        double-clicked => {
+            root.reset-view();
+            root.note("double tap → view reset");
+        }
+    }
+
+    // Two-finger pinch and rotate. Whether pinch events actually reach Slint on the
+    // Android native-activity backend is the open M0 question (docs/SPIKE.md section 2).
+    pinch := ScaleRotateGestureHandler {
+        enabled: true;
+
+        started => {
+            root.gesture-state = "pinch started";
+            root.note("pinch started");
+        }
+
+        updated => {
+            root.live-scale = self.scale;
+            root.gesture-state = "pinch " + round(self.scale * 100) + "%";
+        }
+
+        ended => {
+            // Anchor conversion is approximate for M0: the exact inverse-transform maths
+            // arrives with the real reader (M4). The committed transform itself is core
+            // state either way.
+            root.zoom-by(self.scale,
+                ((self.center.x - root.absolute-position.x) / 1px - root.pan-x) / root.zoom-scale,
+                ((self.center.y - root.absolute-position.y) / 1px - root.pan-y) / root.zoom-scale);
+            root.live-scale = 1.0;
+            root.gesture-state = "pinch " + round(self.scale * 100) + "% committed";
+            root.note("pinch ended at " + round(self.scale * 100) + "%");
+        }
+
+        cancelled => {
+            root.live-scale = 1.0;
+            root.gesture-state = "pinch cancelled";
+            root.note("pinch cancelled");
+        }
+    }
+
+    // Gesture read-out, so a device test can be judged by looking at it.
+    VerticalLayout {
+        alignment: start;
+        padding: 8px;
+
+        Rectangle {
+            background: Palette.control-background;
+            border-radius: 4px;
+
+            Text {
+                text: root.gesture-state + "   scale " + round(root.zoom-scale * 100) + "%";
+                font-size: 12px;
+                color: Palette.control-foreground;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Spike log: every intent the UI produced, in order.
+// ---------------------------------------------------------------------------------------
+component LogPane inherits Rectangle {
+    in property <string> log;
+
+    background: Palette.background;
+
+    ScrollView {
+        viewport-width: self.width;
+        viewport-height: label.preferred-height + 32px;
+
+        label := Text {
+            x: 16px;
+            y: 16px;
+            width: root.width - 32px;
+            text: root.log;
+            wrap: word-wrap;
+            font-size: 13px;
+            color: Palette.foreground;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+export component MainWindow inherits Window {
+    title: "Kavider";
+    preferred-width: 412px;
+    preferred-height: 870px;
+    background: Palette.background;
+
+    in-out property <int> tab: 0;
+    in-out property <string> server-text;
+    in-out property <string> password-text;
+    in-out property <int> direction: 0;
+    in-out property <float> page: 1.0;
+    in-out property <float> zoom-scale: 1.0;
+    in-out property <float> pan-x: 0.0;
+    in-out property <float> pan-y: 0.0;
+    in-out property <string> log: "spike log:";
+
+    callback note(string);
+    callback zoom-by(float, float, float);
+    callback pan-to(float, float);
+    callback reset-view();
+
+    // Edge-to-edge with correct system insets (brief section 3).
+    VerticalLayout {
+        x: root.safe-area-insets.left;
+        y: root.safe-area-insets.top;
+        width: root.width - root.safe-area-insets.left - root.safe-area-insets.right;
+        height: root.height - root.safe-area-insets.top - root.safe-area-insets.bottom;
+
+        // Top app bar
+        Rectangle {
+            height: 56px;
+            background: Palette.background;
+
+            Text {
+                x: 16px;
+                vertical-alignment: center;
+                height: parent.height;
+                text: ["Connect", "Reader", "Zoom", "Log"][root.tab];
+                font-size: 20px;
+                color: Palette.foreground;
+            }
+        }
+
+        // Content
+        Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+
+            if root.tab == 0: ConnectPane {
+                server-text <=> root.server-text;
+                password-text <=> root.password-text;
+                note(line) => {
+                    root.note(line);
+                }
+            }
+
+            if root.tab == 1: ReaderPane {
+                direction <=> root.direction;
+                page <=> root.page;
+                note(line) => {
+                    root.note(line);
+                }
+            }
+
+            if root.tab == 2: ZoomPane {
+                zoom-scale <=> root.zoom-scale;
+                pan-x <=> root.pan-x;
+                pan-y <=> root.pan-y;
+                zoom-by(factor, anchor-x, anchor-y) => {
+                    root.zoom-by(factor, anchor-x, anchor-y);
+                }
+                pan-to(x, y) => {
+                    root.pan-to(x, y);
+                }
+                reset-view => {
+                    root.reset-view();
+                }
+                note(line) => {
+                    root.note(line);
+                }
+            }
+
+            if root.tab == 3: LogPane {
+                log: root.log;
+            }
+        }
+
+        // Bottom navigation
+        Rectangle {
+            height: 64px;
+            background: Palette.alternate-background;
+
+            HorizontalLayout {
+                NavItem {
+                    label: "Connect";
+                    selected: root.tab == 0;
+                    tapped => {
+                        root.tab = 0;
+                        root.note("tab: connect");
+                    }
+                }
+
+                NavItem {
+                    label: "Reader";
+                    selected: root.tab == 1;
+                    tapped => {
+                        root.tab = 1;
+                        root.note("tab: reader");
+                    }
+                }
+
+                NavItem {
+                    label: "Zoom";
+                    selected: root.tab == 2;
+                    tapped => {
+                        root.tab = 2;
+                        root.note("tab: zoom");
+                    }
+                }
+
+                NavItem {
+                    label: "Log";
+                    selected: root.tab == 3;
+                    tapped => {
+                        root.tab = 3;
+                        root.note("tab: log");
+                    }
+                }
+            }
+        }
+    }
+}

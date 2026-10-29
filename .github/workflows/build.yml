@@ -11,8 +11,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  ANDROID_PLATFORM: platforms;android-36
-  ANDROID_BUILD_TOOLS: build-tools;36.0.0
+  ANDROID_PLATFORM: platforms;android-34
+  ANDROID_BUILD_TOOLS: build-tools;34.0.0
   ANDROID_NDK_VERSION: 26.1.10909125
 
 jobs:
@@ -65,7 +65,6 @@ jobs:
           yes | "${SDKMANAGER}" --licenses > /dev/null 2>&1 || true
           "${SDKMANAGER}" --install "${ANDROID_PLATFORM}" "${ANDROID_BUILD_TOOLS}" "ndk;${ANDROID_NDK_VERSION}"
           
-          # KRİTİK DÜZELTME: Rust ve Slint'in SDK'yı bulabilmesi için yolları kalıcı olarak ENV'ye yazıyoruz
           echo "ANDROID_HOME=${SDK_ROOT}" >> "${GITHUB_ENV}"
           echo "ANDROID_SDK_ROOT=${SDK_ROOT}" >> "${GITHUB_ENV}"
           echo "ANDROID_NDK_ROOT=${SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}" >> "${GITHUB_ENV}"
